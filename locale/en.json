@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "List Callouts",
-    "description": "Renders - ! list callouts in Markdown file previews and in Chat messages, with configurable marker characters and colors."
+    "description": "Renders - ! list callouts in Markdown file previews and Chat messages; markers, colors, and both per-surface switches are edited on the bundle's page in the Plugins section."
   }
 }

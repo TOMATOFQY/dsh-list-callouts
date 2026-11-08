@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "List Callouts",
-    "description": "在 Markdown 文件预览和聊天消息中渲染 - ! 类型的 List Callouts，支持自定义标记字符与颜色。"
+    "description": "在 Markdown 文件预览和聊天消息中渲染 - ! 类型的列表批注；标记字符、颜色以及文档/聊天两个开关都在「插件」页的 bundle 配置区编辑。"
   }
 }

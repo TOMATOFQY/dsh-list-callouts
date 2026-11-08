@@ -1,6 +1,6 @@
 {
   "name": "@local/obsidian-list-callouts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Renders list callouts (- ! item) in Markdown file previews and Chat messages; a port of the Obsidian List Callouts plugin.",
@@ -17,7 +17,8 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "README.zh.md"
   ],
   "dsh": {
     "bundle": {

@@ -1,5 +1,7 @@
 # List Callouts
 
+English | [中文](README.zh.md)
+
 Renders **list callouts** in DSH's Markdown file preview *and* in Chat messages: a
 list item whose first character is a configured marker becomes a tinted,
 color-coded callout.
@@ -84,8 +86,9 @@ rewrites the text, the split is reverted and re-applied on the next settle.
 
 The Chat path deliberately never re-parents or replaces nodes: that DOM belongs
 to the shipped renderer, which also streams tokens and unmounts virtualized
-rows, so structural edits would break its reconciliation. Disable it with
-`chatCallouts: false` if you prefer Chat untouched.
+rows, so structural edits would break its reconciliation. Turn it off with the
+**Render in Chat messages** switch on the bundle's page if you prefer Chat
+untouched.
 
 ## How it plugs in
 
@@ -135,10 +138,10 @@ Add a matching row override in the profile's `cordis.patch.yml`:
 - id: obsidian-list-callouts
   config:
     defaultViewer: callouts      # callouts | builtin (sidebar .md preview)
-    chatCallouts: true           # decorate Chat messages too
-    opacity:
-      light: 0.1
-      dark: 0.15
+    chatCallouts: true           # decorate Chat messages
+    markdownCallouts: true       # own the .md preview renderer
+    opacityLight: 0.1            # tint alpha, light mode
+    opacityDark: 0.15            # tint alpha, dark mode
     callouts:
       - { char: '!', color: '255, 23, 68' }
       - { char: '?', color: '255, 145, 0' }
@@ -148,10 +151,12 @@ Add a matching row override in the profile's `cordis.patch.yml`:
 - `callouts[].char` — the marker character (≤ 4 code units, no spaces).
 - `callouts[].color` — `r, g, b` (0–255) used for the marker and the tinted background.
 - `callouts[].icon` — optional glyph shown instead of `char` (emoji work).
-- `opacity.light` / `opacity.dark` — background tint alpha, 0–1.
+- `opacityLight` / `opacityDark` — background tint alpha, 0–1.
 - `defaultViewer` — which renderer opens `.md` tabs first; the other one stays
   available in the preview toolbar's dropdown.
-- `chatCallouts` — set `false` to leave Chat rendering completely untouched.
+- `chatCallouts` / `markdownCallouts` — the two per-surface switches, same values
+  the bundle page writes; the theme fields other than `defaultViewer` are
+  `.volatile()`, so editing them restarts nothing.
 
 ## Renderer coverage
 
