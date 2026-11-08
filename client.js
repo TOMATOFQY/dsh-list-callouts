@@ -393,6 +393,8 @@ function matchListCallout(element, callouts) {
 				defaultViewer: raw.defaultViewer === 'builtin' ? 'builtin' : 'callouts',
 				/** Decorate Chat messages that use the same list syntax. */
 				chatCallouts: raw.chatCallouts !== false,
+				/** Render .md previews through this bundle's own Markdown renderer. */
+				markdownCallouts: raw.markdownCallouts !== false,
 			};
 		})();
 
@@ -415,6 +417,7 @@ function matchListCallout(element, callouts) {
 			sorted: sortCallouts(CONFIG.callouts),
 			opacity: CONFIG.opacity,
 			chatCallouts: CONFIG.chatCallouts,
+			markdownCallouts: CONFIG.markdownCallouts,
 		};
 		let renderer = createRenderer(markdownit, settings.callouts);
 		/** Host config form for this entry, once the settings service answered. */
@@ -490,12 +493,19 @@ function matchListCallout(element, callouts) {
 				const light = clampOpacity(value.opacityLight, 0.1);
 				const dark = clampOpacity(value.opacityDark, 0.15);
 				const chat = value.chatCallouts !== false;
+				const markdown = value.markdownCallouts !== false;
 				const calloutsChanged = !sameCallouts(callouts, settings.callouts);
-				const changed = calloutsChanged || light !== settings.opacity.light || dark !== settings.opacity.dark || chat !== settings.chatCallouts;
+				const changed =
+					calloutsChanged ||
+					light !== settings.opacity.light ||
+					dark !== settings.opacity.dark ||
+					chat !== settings.chatCallouts ||
+					markdown !== settings.markdownCallouts;
 				settings.callouts = callouts;
 				settings.sorted = sortCallouts(callouts);
 				settings.opacity = { light, dark };
 				settings.chatCallouts = chat;
+				settings.markdownCallouts = markdown;
 				if (calloutsChanged) renderer = createRenderer(markdownit, callouts);
 				if (changed) notifySettings();
 				else if (configStatus !== 'ready') notifySettings();
@@ -519,6 +529,16 @@ function matchListCallout(element, callouts) {
 			if (configForm === undefined || !configWritable) return false;
 			try {
 				return await configForm.mutate([{ op: 'set', path: ['callouts'], value: callouts }]);
+			} catch {
+				return false;
+			}
+		}
+
+		/** Write one scalar field (a switch) into the Host config. */
+		async function writeSetting(field, value) {
+			if (configForm === undefined || !configWritable) return false;
+			try {
+				return await configForm.mutate([{ op: 'set', path: [field], value }]);
 			} catch {
 				return false;
 			}
@@ -618,6 +638,12 @@ function matchListCallout(element, callouts) {
 			'.lc-settings-heading{margin:0 0 2px;font-size:1.12em;font-weight:600}',
 			'.lc-settings-heading+.lc-settings-intro{margin-top:0}',
 			'.lc-settings-intro{margin:0;color:var(--dsw-alias-label-secondary)}',
+			'.lc-settings-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:2px 0}',
+			'.lc-settings-toggle-label{color:var(--dsw-alias-label-primary)}',
+			'.lc-settings-switch{position:relative;width:34px;height:20px;flex:none;padding:0;border:.5px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);cursor:pointer;transition:background .15s ease,border-color .15s ease}',
+			'.lc-settings-switch-on{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}',
+			'.lc-settings-knob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform .15s ease}',
+			'.lc-settings-switch-on .lc-settings-knob{transform:translateX(14px);background:var(--dsw-alias-bg-layer-1)}',
 			'.lc-settings-list{display:flex;flex-direction:column;gap:6px}',
 			'.lc-settings-row{display:flex;align-items:center;gap:8px}',
 			'.lc-settings-char,.lc-settings-icon{background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l2);border-radius:6px;color:inherit;font:inherit;padding:4px 8px;min-width:0}',
@@ -928,7 +954,7 @@ function matchListCallout(element, callouts) {
 
 		/** Resident, zero-size mount that keeps the Chat decoration observer alive with the plugin. */
 		function ChatCalloutDecorator() {
-			React.useEffect(() => (CONFIG.chatCallouts ? installChatDecorations() : undefined), []);
+			React.useEffect(() => installChatDecorations(), []);
 			return null;
 		}
 
@@ -1050,11 +1076,37 @@ function matchListCallout(element, callouts) {
 				);
 			});
 
+			const switchRow = (label, field, value) =>
+				React.createElement(
+					'div',
+					{ className: 'lc-settings-toggle' },
+					React.createElement('span', { className: 'lc-settings-toggle-label' }, label),
+					React.createElement(
+						'button',
+						{
+							type: 'button',
+							role: 'switch',
+							'aria-checked': value === true,
+							'aria-label': label,
+							className: value === true ? 'lc-settings-switch lc-settings-switch-on' : 'lc-settings-switch',
+							onClick: () => {
+								setFailure(undefined);
+								void writeSetting(field, value !== true).then((accepted) => {
+									if (!accepted) setFailure('write');
+								});
+							},
+						},
+						React.createElement('span', { className: 'lc-settings-knob' }),
+					),
+				);
+
 			return React.createElement(
 				'div',
 				{ className: 'lc-settings' },
 				props.heading === true ? React.createElement('h2', { className: 'lc-settings-heading' }, t('settings.tab')) : null,
 				React.createElement('p', { className: 'lc-settings-intro' }, t('settings.intro')),
+				switchRow(t('settings.markdown'), 'markdownCallouts', settings.markdownCallouts),
+				switchRow(t('settings.chat'), 'chatCallouts', settings.chatCallouts),
 				React.createElement(
 					'div',
 					{ className: 'lc-settings-list' },
@@ -1128,6 +1180,8 @@ function matchListCallout(element, callouts) {
 			'settings.add': '添加一条',
 			'settings.reset': '恢复默认',
 			'settings.delete': '删除',
+			'settings.markdown': '在 Markdown 预览中渲染（关闭后使用内置渲染器）',
+			'settings.chat': '在聊天消息中渲染',
 			'settings.preview': '预览',
 			'settings.sample': '示例文本',
 			'settings.note': '这些值就是当前 profile 里的插件配置（写回配置层，与 dsh 其它插件一致），改完立即生效；恢复默认会删掉这一层的覆盖值。',
@@ -1149,6 +1203,8 @@ function matchListCallout(element, callouts) {
 			'settings.add': 'Add one',
 			'settings.reset': 'Reset to defaults',
 			'settings.delete': 'Remove',
+			'settings.markdown': 'Render in Markdown previews (off uses the shipped renderer)',
+			'settings.chat': 'Render in Chat messages',
 			'settings.preview': 'Preview',
 			'settings.sample': 'Sample text',
 			'settings.note': 'These values are the plugin configuration of the current profile, like every other dsh plugin: edits apply immediately and Reset drops this layer override.',
@@ -1165,16 +1221,37 @@ function matchListCallout(element, callouts) {
 		function apply(ctx) {
 			ctx.effect(() => ctx.locale.register(NS, { zh: ZH, en: EN }), 'list-callouts: dictionaries');
 			const t = ctx.locale.bind(NS);
-			ctx.effect(
-				() =>
-					ctx.documentPreviews.register({
+			/* The Markdown switch registers or retires the document renderer, so turning it
+			   off hands .md previews back to the shipped renderer instead of degrading them. */
+			let previewRegistration;
+			const syncDocumentRenderer = () => {
+				const wanted = settings.markdownCallouts === true;
+				if (wanted && previewRegistration === undefined) {
+					previewRegistration = ctx.documentPreviews.register({
 						id: PREVIEW_ID,
 						extensions: ['md', 'markdown'],
 						priority: CONFIG.defaultViewer === 'builtin' ? 'builtin' : 'extension',
 						title: () => t('viewer.label'),
 						loading: 'text-pages',
 						wrap: false,
-					}),
+					});
+				} else if (!wanted && previewRegistration !== undefined) {
+					previewRegistration();
+					previewRegistration = undefined;
+				}
+			};
+			ctx.effect(
+				() => {
+					const off = subscribeCallouts(syncDocumentRenderer);
+					syncDocumentRenderer();
+					return () => {
+						off();
+						if (previewRegistration !== undefined) {
+							previewRegistration();
+							previewRegistration = undefined;
+						}
+					};
+				},
 				'list-callouts: metadata',
 			);
 			ctx.effect(
@@ -1204,15 +1281,13 @@ function matchListCallout(element, callouts) {
 					ctx.inject(['configForms'], (binding) => binding.effect(() => bindConfigForm(binding), 'list-callouts: settings form')),
 				'list-callouts: settings binding',
 			);
-			if (CONFIG.chatCallouts) {
-				ctx.effect(
-					() =>
-						ctx.slots.inject('shell.overlay', () =>
-							ctx.slots.register({ name: 'shell.overlay', id: `${PLUGIN_ID}/chat-callouts`, order: 908 }, ChatCalloutDecorator),
-						),
-					'list-callouts: chat decorator',
-				);
-			}
+			ctx.effect(
+				() =>
+					ctx.slots.inject('shell.overlay', () =>
+						ctx.slots.register({ name: 'shell.overlay', id: `${PLUGIN_ID}/chat-callouts`, order: 909 }, ChatCalloutDecorator),
+					),
+				'list-callouts: chat decorator',
+			);
 			ctx.effect(() => {
 				const style = document.createElement('style');
 				style.dataset.plugin = PLUGIN_ID;

@@ -39,6 +39,11 @@ export const Config = z.object({
 	opacityLight: z.number().min(0).max(1).default(0.1).description('Tint alpha in light mode.').volatile(),
 	opacityDark: z.number().min(0).max(1).default(0.15).description('Tint alpha in dark mode.').volatile(),
 	chatCallouts: z.boolean().default(true).description('Decorate Chat messages as well.').volatile(),
+	markdownCallouts: z
+		.boolean()
+		.default(true)
+		.description('Render .md previews through this bundle’s Markdown renderer; off hands them to the shipped renderer.')
+		.volatile(),
 	defaultViewer: z
 		.union([z.const('callouts'), z.const('builtin')])
 		.default('callouts')
@@ -48,7 +53,7 @@ export const Config = z.object({
 /**
  * Project the live configuration onto the shape the Browser half reads.
  * @param {object} config - the resolved row configuration.
- * @returns {{ callouts: { char: string, color: string, icon?: string }[], opacity: { light: number, dark: number }, chatCallouts: boolean, defaultViewer: 'callouts' | 'builtin' }} page configuration.
+ * @returns {{ callouts: { char: string, color: string, icon?: string }[], opacity: { light: number, dark: number }, chatCallouts: boolean, markdownCallouts: boolean, defaultViewer: 'callouts' | 'builtin' }} page configuration.
  */
 function projectConfig(config) {
 	const callouts = config.callouts.get();
@@ -68,6 +73,7 @@ function projectConfig(config) {
 			dark: typeof dark === 'number' ? dark : 0.15,
 		},
 		chatCallouts: config.chatCallouts.get() !== false,
+		markdownCallouts: config.markdownCallouts.get() !== false,
 		defaultViewer: config.defaultViewer === 'builtin' ? 'builtin' : 'callouts',
 	};
 }

@@ -104,6 +104,9 @@ make "List callouts" an opt-in choice in that dropdown instead.
 edited on the bundle's own page, the same place the shipped bundles keep their
 settings (`plugins.bundle.config`). No config file needs to be touched:
 
+- two switches: **Render in Markdown previews** (off hands `.md` tabs back to the
+  shipped renderer) and **Render in Chat messages** — each surface is controlled
+  on its own;
 - add and remove markers, each with a character (≤ 4 code units, no spaces), a
   color picker, and an optional icon glyph;
 - a live preview renders the current list with the real callout styling;
