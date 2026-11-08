@@ -1,4 +1,4 @@
-# List callouts
+# List Callouts
 
 Renders **list callouts** in DSH's Markdown file preview *and* in Chat messages: a
 list item whose first character is a configured marker becomes a tinted,

@@ -1021,8 +1021,8 @@ function matchListCallout(element, callouts) {
 		//#endregion
 
 		const ZH = {
-			'viewer.label': '列表 Callout',
-			'settings.tab': '列表 Callout',
+			'viewer.label': 'List Callouts',
+			'settings.tab': 'List Callouts',
 			'settings.intro': '在这里增删批注（list callout）的标记字符、颜色与可选图标；改动立即作用到文档预览和聊天消息。',
 			'settings.char': '标记字符',
 			'settings.color': '颜色',
@@ -1039,8 +1039,8 @@ function matchListCallout(element, callouts) {
 			'settings.error.empty': '至少保留一条批注定义。',
 		};
 		const EN = {
-			'viewer.label': 'List callouts',
-			'settings.tab': 'List callouts',
+			'viewer.label': 'List Callouts',
+			'settings.tab': 'List Callouts',
 			'settings.intro': 'Add, edit, or remove the marker characters, colors, and optional icon glyphs used for list callouts. Changes apply to document previews and Chat immediately.',
 			'settings.char': 'Marker',
 			'settings.color': 'Color',
