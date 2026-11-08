@@ -532,6 +532,8 @@ function matchListCallout(element, callouts) {
 			`li.${CHAT_CLASS} .lc-chat-marker{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-weight:700;line-height:1;color:rgb(var(--lc-callout-color));pointer-events:none}`,
 			/* Settings → Plugins → List callouts. Host tokens only. */
 			'.lc-settings{display:flex;flex-direction:column;gap:10px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.6}',
+			'.lc-settings-heading{margin:0 0 2px;font-size:1.12em;font-weight:600}',
+			'.lc-settings-heading+.lc-settings-intro{margin-top:0}',
 			'.lc-settings-intro{margin:0;color:var(--dsw-alias-label-secondary)}',
 			'.lc-settings-list{display:flex;flex-direction:column;gap:6px}',
 			'.lc-settings-row{display:flex;align-items:center;gap:8px}',
@@ -959,6 +961,7 @@ function matchListCallout(element, callouts) {
 			return React.createElement(
 				'div',
 				{ className: 'lc-settings' },
+				props.heading === true ? React.createElement('h2', { className: 'lc-settings-heading' }, t('settings.tab')) : null,
 				React.createElement('p', { className: 'lc-settings-intro' }, t('settings.intro')),
 				React.createElement(
 					'div',
@@ -1090,11 +1093,28 @@ function matchListCallout(element, callouts) {
 					),
 				'list-callouts: settings tab',
 			);
+			ctx.effect(
+				() =>
+					ctx.slots.inject('settings.section', () =>
+						ctx.slots.register(
+							{
+								name: 'settings.section',
+								id: 'list-callouts',
+								order: 25,
+								label: () => t('settings.tab'),
+								locale: NS,
+								inject: () => ({ heading: true }),
+							},
+							ListCalloutSettingsPage,
+						),
+					),
+				'list-callouts: settings section',
+			);
 			if (CONFIG.chatCallouts) {
 				ctx.effect(
 					() =>
 						ctx.slots.inject('shell.overlay', () =>
-							ctx.slots.register({ name: 'shell.overlay', id: `${PLUGIN_ID}/chat-callouts`, order: 907 }, ChatCalloutDecorator),
+							ctx.slots.register({ name: 'shell.overlay', id: `${PLUGIN_ID}/chat-callouts`, order: 908 }, ChatCalloutDecorator),
 						),
 					'list-callouts: chat decorator',
 				);

@@ -96,8 +96,9 @@ make "List callouts" an opt-in choice in that dropdown instead.
 
 ## Settings
 
-**Settings → Plugins → List callouts** edits the marker list without touching
-any config file:
+**Settings → List callouts** (a section of its own, also reachable as
+**Settings → Plugins → List callouts** tab) edits the marker list without
+touching any config file:
 
 - add and remove markers, each with a character (≤ 4 code units, no spaces), a
   color picker, and an optional icon glyph;
