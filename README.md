@@ -12,6 +12,16 @@ This is a port of [mgmeyers/obsidian-list-callouts](https://github.com/mgmeyers/
 markdown-it transform plus scoped CSS; the CodeMirror live-preview half has no
 counterpart because DSH's file preview is read-only.
 
+## Screenshots
+
+Captured from a running DSH session (Chinese UI). The list's own bullet is kept and
+takes the callout color, the marker character follows it, and a nested list stays
+inside the band in Chat:
+
+![Chat callouts](screenshots/chat-callouts.png)
+
+![Callout color variety](screenshots/chat-callouts-variety.png)
+
 ## Install
 
 The package is a self-contained DSH bundle: a Host half (`index.js`), a Browser

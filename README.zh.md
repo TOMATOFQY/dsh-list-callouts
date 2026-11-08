@@ -6,6 +6,15 @@
 
 本项目是 [mgmeyers/obsidian-list-callouts](https://github.com/mgmeyers/obsidian-list-callouts)（GPL-3.0）向 DSH Web UI 的移植。Obsidian 插件的阅读视图部分 —— `registerMarkdownPostProcessor` 那一遍 DOM 后处理加上 `styles.css` —— 被重写成 markdown-it 变换 + 作用域 CSS；它的 CodeMirror 实时预览部分在 DSH 没有对应物，因为 DSH 的文件预览是只读的。
 
+## 截图
+
+下面两张截自实际运行的 DSH 会话（中文界面）。列表自己的项目符号保留下来并取批注颜色，
+标记字符紧随其后；聊天里嵌套列表也落在底色带内：
+
+![聊天中的批注](screenshots/chat-callouts.png)
+
+![不同颜色的批注](screenshots/chat-callouts-variety.png)
+
 ## 安装
 
 这是一个自包含的 DSH bundle：Host 半（`index.js`）、Browser 半（`client.js`，内嵌 markdown-it）、loader patch、多语言元数据和一个图标。把目录装进 profile：
