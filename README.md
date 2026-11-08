@@ -22,6 +22,16 @@ inside the band in Chat:
 
 ![Callout color variety](screenshots/chat-callouts-variety.png)
 
+Illustrations with placeholder text — Chat, the configuration page of the bundle
+(Sidebar → Plugins), and the sidebar document preview. They are constructed from the
+plugin's own stylesheet rather than captured from a session:
+
+![Demo Chat](screenshots/demo-chat.png)
+
+![Demo configuration page](screenshots/demo-settings.png)
+
+![Demo document preview](screenshots/demo-document.png)
+
 ## Install
 
 The package is a self-contained DSH bundle: a Host half (`index.js`), a Browser

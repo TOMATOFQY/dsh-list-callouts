@@ -15,6 +15,15 @@
 
 ![不同颜色的批注](screenshots/chat-callouts-variety.png)
 
+下面三张是**占位内容的示意图**（英文）——聊天渲染、bundle 的配置页（侧边栏 → 插件）、
+侧边栏文档预览。它们是用插件自己的样式表构造渲染的，不是从会话里截的：
+
+![聊天示意](screenshots/demo-chat.png)
+
+![配置页示意](screenshots/demo-settings.png)
+
+![文档预览示意](screenshots/demo-document.png)
+
 ## 安装
 
 这是一个自包含的 DSH bundle：Host 半（`index.js`）、Browser 半（`client.js`，内嵌 markdown-it）、loader patch、多语言元数据和一个图标。把目录装进 profile：
