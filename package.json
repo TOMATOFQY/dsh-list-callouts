@@ -30,5 +30,8 @@
         "@deepseek-ai/dsh-client-ui-sidebar-documentpreview"
       ]
     }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "~3.19.0"
   }
 }

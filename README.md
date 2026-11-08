@@ -17,18 +17,22 @@ half (`client.js`, which embeds the markdown-it bundle), the loader patch, local
 metadata, and an icon. Install the directory into a profile:
 
 ```sh
+npm install                       # the Host half imports @deepseek-ai/schemastery
 # inside a DSH session / profile shell
 plugin_manager install_bundle /path/to/dsh-list-callouts
 ```
 
 `client.js` is the shipped artifact. Editing it directly is enough — there is no
-build step; the renderer code lives in its `//#region` sections.
+build step; the renderer code lives in its `//#region` sections. The Host half
+(`index.js`) needs its one runtime dependency installed in this directory; the
+profile links the directory, so `pnpm` does not install it for you. `node_modules`
+is git-ignored; `package-lock.json` is committed.
 
 ## Layout
 
 | Path | Role |
 |---|---|
-| `index.js` | Host half: projects the row config onto `__DSH_LIST_CALLOUTS_CONFIG__` |
+| `index.js` | Host half: the `Config` schema (the namespace the page edits) and the initial `__DSH_LIST_CALLOUTS_CONFIG__` projection |
 | `client.js` | Browser half: document-preview renderer, Chat decorator, CSS |
 | `cordis.patch.yml` | Inserts the loader row for the bundle |
 | `locale/{en,zh}.json` | Plugin Manager title/description |
@@ -96,9 +100,9 @@ make "List callouts" an opt-in choice in that dropdown instead.
 
 ## Settings
 
-**Settings → List callouts** (a section of its own, also reachable as
-**Settings → Plugins → List callouts** tab) edits the marker list without
-touching any config file:
+**Sidebar → Plugins → List Callouts bundle → configuration**: the marker list is
+edited on the bundle's own page, the same place the shipped bundles keep their
+settings (`plugins.bundle.config`). No config file needs to be touched:
 
 - add and remove markers, each with a character (≤ 4 code units, no spaces), a
   color picker, and an optional icon glyph;
@@ -107,11 +111,18 @@ touching any config file:
   re-render and already-rendered Chat rows are re-decorated;
 - **Reset to defaults** clears the override and falls back to the plugin config.
 
-The page writes to this browser's `localStorage`
-(`dsh.list-callouts.callouts.v1`), because the DSH settings document only serves
-plugins that own a Host `Config` schema; the loader row config still supplies the
-defaults the page falls back to. Effective order: browser override → row config →
-built-in defaults.
+The page writes through the plugin's own Host `Config` (`obsidian-list-callouts`
+namespace): the values are validated by the schema and persisted in the profile's
+configuration layer, exactly like the settings of every shipped plugin. The Host
+declares the editable fields `.volatile()`, so an accepted edit reaches the open
+documents and the Chat decorator without a reload; **Reset to defaults** drops the
+layer override.
+
+The injected default (from the row's own `config` in the profile patch) is used
+only for the first paint, before the settings mirror answers. A browser-local
+override left by an earlier version of this plugin
+(`localStorage['dsh.list-callouts.callouts.v1']`) is migrated into the Host config
+once and then removed.
 
 ## Configuration
 

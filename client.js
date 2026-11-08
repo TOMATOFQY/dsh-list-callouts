@@ -396,16 +396,59 @@ function matchListCallout(element, callouts) {
 			};
 		})();
 
-		/** Browser-local override written by the settings page. */
-		const STORE_KEY = 'dsh.list-callouts.callouts.v1';
+		/** Settings namespace this plugin edits: the loader row's patch id. */
+		const SETTINGS_NS = 'obsidian-list-callouts';
+		/** Override left by the earlier browser-local settings page; migrated once. */
+		const LEGACY_STORE_KEY = 'dsh.list-callouts.callouts.v1';
 		const DEFAULT_COLOR = '255, 145, 0';
 		/** Marker characters offered by "add" before the list is exhausted. */
 		const MARKER_CANDIDATES = ['!', '?', '~', '@', '$', '%', '&', '#', '^', '*', '+', '-', '='];
 
-		/** Read the browser-local override, when it parses. */
-		function readStoredCallouts() {
+		/** Longest marker first, so a multi-character marker wins over its prefix. */
+		function sortCallouts(callouts) {
+			return callouts.slice().sort((left, right) => right.char.length - left.char.length);
+		}
+
+		/** Live state: the Host config form when the profile has one, else the injected defaults. */
+		const settings = {
+			callouts: CONFIG.callouts,
+			sorted: sortCallouts(CONFIG.callouts),
+			opacity: CONFIG.opacity,
+			chatCallouts: CONFIG.chatCallouts,
+		};
+		let renderer = createRenderer(markdownit, settings.callouts);
+		/** Host config form for this entry, once the settings service answered. */
+		let configForm;
+		let configStatus = 'loading';
+		let configWritable = false;
+		const settingsListeners = new Set();
+
+		/** Observe callout-list changes from any surface. */
+		function subscribeCallouts(listener) {
+			settingsListeners.add(listener);
+			return () => settingsListeners.delete(listener);
+		}
+
+		/** Notify every derived surface after a state change. */
+		function notifySettings() {
+			for (const listener of Array.from(settingsListeners)) listener();
+		}
+
+		/** Same callout list, in author order. */
+		function sameCallouts(left, right) {
+			if (left.length !== right.length) return false;
+			for (let index = 0; index < left.length; index += 1) {
+				if (left[index].char !== right[index].char) return false;
+				if (left[index].color !== right[index].color) return false;
+				if ((left[index].icon ?? '') !== (right[index].icon ?? '')) return false;
+			}
+			return true;
+		}
+
+		/** Read the browser-local override left by the previous settings page, if any. */
+		function readLegacyCallouts() {
 			try {
-				const raw = localStorage.getItem(STORE_KEY);
+				const raw = localStorage.getItem(LEGACY_STORE_KEY);
 				if (raw === null) return undefined;
 				const parsed = JSON.parse(raw);
 				if (parsed === null || typeof parsed !== 'object' || !Array.isArray(parsed.callouts)) return undefined;
@@ -415,45 +458,83 @@ function matchListCallout(element, callouts) {
 			}
 		}
 
-		/** Persist the override; clearing it restores the loader row config. */
-		function writeStoredCallouts(callouts) {
+		/** Drop the browser-local override once its values live in the Host config. */
+		function clearLegacyCallouts() {
 			try {
-				if (callouts === undefined) localStorage.removeItem(STORE_KEY);
-				else localStorage.setItem(STORE_KEY, JSON.stringify({ callouts }));
+				localStorage.removeItem(LEGACY_STORE_KEY);
 			} catch {
-				/* storage can be unavailable; the session keeps working from memory */
+				/* storage can be unavailable */
 			}
 		}
 
-		/** Longest marker first, so a multi-character marker wins over its prefix. */
-		function sortCallouts(callouts) {
-			return callouts.slice().sort((left, right) => right.char.length - left.char.length);
+		let legacyMigrated = false;
+
+		/** Move the old browser-local list into the Host config once, so nothing is lost. */
+		function migrateLegacyOverride() {
+			if (legacyMigrated) return;
+			if (configStatus !== 'ready' || configWritable !== true) return;
+			legacyMigrated = true;
+			const stored = readLegacyCallouts();
+			if (stored === undefined) return;
+			clearLegacyCallouts();
+			void writeCallouts(normalizeCallouts(stored));
 		}
 
-		/** Callout list in force: browser override > loader row config > built-in defaults. */
-		const settings = (() => {
-			const stored = readStoredCallouts();
-			const callouts = stored === undefined ? CONFIG.callouts : normalizeCallouts(stored);
-			return { callouts, sorted: sortCallouts(callouts) };
-		})();
-		let renderer = createRenderer(markdownit, settings.callouts);
-		const settingsListeners = new Set();
-
-		/** Observe callout-list changes made from the settings page. */
-		function subscribeCallouts(listener) {
-			settingsListeners.add(listener);
-			return () => settingsListeners.delete(listener);
+		/** Fold one Host config snapshot into the live state. */
+		function acceptConfig(snapshot) {
+			configStatus = snapshot.status;
+			configWritable = snapshot.writable === true;
+			const value = snapshot.value;
+			if (value !== undefined && value !== null) {
+				const callouts = normalizeCallouts(value.callouts);
+				const light = clampOpacity(value.opacityLight, 0.1);
+				const dark = clampOpacity(value.opacityDark, 0.15);
+				const chat = value.chatCallouts !== false;
+				const calloutsChanged = !sameCallouts(callouts, settings.callouts);
+				const changed = calloutsChanged || light !== settings.opacity.light || dark !== settings.opacity.dark || chat !== settings.chatCallouts;
+				settings.callouts = callouts;
+				settings.sorted = sortCallouts(callouts);
+				settings.opacity = { light, dark };
+				settings.chatCallouts = chat;
+				if (calloutsChanged) renderer = createRenderer(markdownit, callouts);
+				if (changed) notifySettings();
+				else if (configStatus !== 'ready') notifySettings();
+			} else {
+				notifySettings();
+			}
+			migrateLegacyOverride();
 		}
 
-		/** Replace the live callout list, rebuild the renderer, and notify every surface. */
-		function setCallouts(callouts) {
-			settings.callouts = callouts;
-			settings.sorted = sortCallouts(callouts);
-			renderer = createRenderer(markdownit, callouts);
-			for (const listener of Array.from(settingsListeners)) listener();
+		/** Bind the settings service's form for this entry, when the profile provides one. */
+		function bindConfigForm(binding) {
+			const form = binding.configForms.get(SETTINGS_NS);
+			configForm = form;
+			const off = form.subscribe(() => acceptConfig(form.getSnapshot()));
+			acceptConfig(form.getSnapshot());
+			return off;
 		}
 
-		/** The callout list currently in force. */
+		/** Write the callout list into the Host config; false when there is no writable form. */
+		async function writeCallouts(callouts) {
+			if (configForm === undefined || !configWritable) return false;
+			try {
+				return await configForm.mutate([{ op: 'set', path: ['callouts'], value: callouts }]);
+			} catch {
+				return false;
+			}
+		}
+
+		/** Drop the user override so the schema default applies again. */
+		async function resetCallouts() {
+			if (configForm === undefined || !configWritable) return false;
+			try {
+				return await configForm.mutate([{ op: 'unset', path: ['callouts'] }]);
+			} catch {
+				return false;
+			}
+		}
+
+		/** The callout list currently in force, in author order. */
 		function currentCallouts() {
 			return settings.callouts;
 		}
@@ -463,16 +544,18 @@ function matchListCallout(element, callouts) {
 			return settings.sorted;
 		}
 
+		/** The form's readiness, for the settings page. */
+		function currentConfigStatus() {
+			return { status: configStatus, writable: configWritable };
+		}
+
 		/** Re-render a component whenever the callout list changes. */
 		function useCalloutVersion() {
 			const [version, setVersion] = React.useState(0);
 			React.useEffect(() => subscribeCallouts(() => setVersion((value) => value + 1)), []);
 			return version;
 		}
-		const ROOT_STYLE = {
-			'--lc-bg-opacity-light': String(CONFIG.opacity.light),
-			'--lc-bg-opacity-dark': String(CONFIG.opacity.dark),
-		};
+
 
 		const STYLES = [
 			/* Base document typography, tokens only. */
@@ -603,10 +686,14 @@ function matchListCallout(element, callouts) {
 				[absolutePath, props.resourceAddress],
 			);
 			const rendered = React.useMemo(() => (isText ? renderDocument(renderer, text, env) : null), [isText, text, env, version]);
+			const rootStyle = {
+				'--lc-bg-opacity-light': String(settings.opacity.light),
+				'--lc-bg-opacity-dark': String(settings.opacity.dark),
+			};
 			if (rendered === null) return null;
 			return React.createElement(
 				'div',
-				{ className: 'lc-document', 'data-lc-document': '', style: ROOT_STYLE, onClickCapture: handleLinkClick },
+				{ className: 'lc-document', 'data-lc-document': '', style: rootStyle, onClickCapture: handleLinkClick },
 				rendered.frontmatter === ''
 					? null
 					: React.createElement('div', { className: 'lc-frontmatter', dangerouslySetInnerHTML: { __html: rendered.frontmatter } }),
@@ -686,6 +773,7 @@ function matchListCallout(element, callouts) {
 			};
 
 			const decorate = (row) => {
+				if (settings.chatCallouts !== true) return;
 				if (!row.isConnected) {
 					clearTimer(row);
 					revertMarker(row);
@@ -705,8 +793,8 @@ function matchListCallout(element, callouts) {
 					row.classList.add(CHAT_CLASS);
 					row.setAttribute('data-lc-callout', callout.char);
 					row.style.setProperty('--lc-callout-color', callout.color);
-					row.style.setProperty('--lc-bg-opacity-light', String(CONFIG.opacity.light));
-					row.style.setProperty('--lc-bg-opacity-dark', String(CONFIG.opacity.dark));
+					row.style.setProperty('--lc-bg-opacity-light', String(settings.opacity.light));
+					row.style.setProperty('--lc-bg-opacity-dark', String(settings.opacity.dark));
 					decorated.add(row);
 				}
 				scheduleMarker(row);
@@ -906,6 +994,7 @@ function matchListCallout(element, callouts) {
 		function ListCalloutSettingsPage(props) {
 			const t = props.t;
 			useCalloutVersion();
+			const readiness = currentConfigStatus();
 			const [rows, setRows] = React.useState(() => currentCallouts().map((entry) => ({ ...entry })));
 			const [failure, setFailure] = React.useState(undefined);
 
@@ -917,8 +1006,9 @@ function matchListCallout(element, callouts) {
 					return;
 				}
 				setFailure(undefined);
-				setCallouts(checked.callouts);
-				writeStoredCallouts(checked.callouts);
+				void writeCallouts(checked.callouts).then((accepted) => {
+					if (!accepted) setFailure('write');
+				});
 			};
 			const changeRow = (index, patch) => {
 				applyRows(rows.map((row, position) => (position === index ? { ...row, ...patch } : row)));
@@ -933,10 +1023,12 @@ function matchListCallout(element, callouts) {
 				applyRows(rows.filter((_, position) => position !== index));
 			};
 			const reset = () => {
-				writeStoredCallouts(undefined);
+				clearLegacyCallouts();
 				setRows(CONFIG.callouts.map((entry) => ({ ...entry })));
-				setCallouts(CONFIG.callouts);
 				setFailure(undefined);
+				void resetCallouts().then((accepted) => {
+					if (!accepted) setFailure('write');
+				});
 			};
 
 			const previewRows = rows.map((row, index) => {
@@ -949,8 +1041,8 @@ function matchListCallout(element, callouts) {
 						'data-lc-callout': row.char,
 						style: {
 							'--lc-callout-color': color,
-							'--lc-bg-opacity-light': String(CONFIG.opacity.light),
-							'--lc-bg-opacity-dark': String(CONFIG.opacity.dark),
+							'--lc-bg-opacity-light': String(settings.opacity.light),
+							'--lc-bg-opacity-dark': String(settings.opacity.dark),
 						},
 					},
 					React.createElement('span', { className: 'lc-chat-marker' }, row.icon !== undefined && row.icon !== '' ? row.icon : row.char),
@@ -1016,6 +1108,9 @@ function matchListCallout(element, callouts) {
 					React.createElement('button', { className: 'lc-settings-button', type: 'button', onClick: reset }, t('settings.reset')),
 				),
 				failure === undefined ? null : React.createElement('p', { className: 'lc-settings-hint' }, t(`settings.error.${failure}`)),
+				readiness.status === 'ready' && readiness.writable === true
+					? null
+					: React.createElement('p', { className: 'lc-settings-note' }, t(readiness.status === 'ready' ? 'settings.readonly' : 'settings.loading')),
 				React.createElement('p', { className: 'lc-settings-preview-label' }, t('settings.preview')),
 				React.createElement('ul', { className: 'lc-settings-preview' }, previewRows),
 				React.createElement('p', { className: 'lc-settings-note' }, t('settings.note')),
@@ -1035,7 +1130,10 @@ function matchListCallout(element, callouts) {
 			'settings.delete': '删除',
 			'settings.preview': '预览',
 			'settings.sample': '示例文本',
-			'settings.note': '这些设置保存在本机浏览器（localStorage），不写入 DSH 的 settings 文档；恢复默认后会回落到插件配置（cordis.patch.yml）里的值。',
+			'settings.note': '这些值就是当前 profile 里的插件配置（写回配置层，与 dsh 其它插件一致），改完立即生效；恢复默认会删掉这一层的覆盖值。',
+			'settings.readonly': '当前 profile 不接受配置写入，本页只读。',
+			'settings.loading': '正在读取 Host 侧配置…',
+			'settings.error.write': '写入被拒绝，请检查 profile 是否允许修改配置。',
 			'settings.error.char': '标记字符不能为空、不能含空格，最多 4 个字符。',
 			'settings.error.duplicate': '标记字符重复了。',
 			'settings.error.color': '颜色格式应为 r, g, b（0–255）。',
@@ -1053,7 +1151,10 @@ function matchListCallout(element, callouts) {
 			'settings.delete': 'Remove',
 			'settings.preview': 'Preview',
 			'settings.sample': 'Sample text',
-			'settings.note': 'Stored in this browser (localStorage), not in the DSH settings document. Resetting falls back to the plugin config in cordis.patch.yml.',
+			'settings.note': 'These values are the plugin configuration of the current profile, like every other dsh plugin: edits apply immediately and Reset drops this layer override.',
+			'settings.readonly': 'This profile does not accept configuration writes; the page is read-only.',
+			'settings.loading': 'Reading the Host configuration…',
+			'settings.error.write': 'The write was refused; check that the profile accepts configuration edits.',
 			'settings.error.char': 'A marker cannot be empty, contain spaces, or exceed 4 characters.',
 			'settings.error.duplicate': 'Two rows use the same marker character.',
 			'settings.error.color': 'Color must be r, g, b (0-255).',
@@ -1083,32 +1184,25 @@ function matchListCallout(element, callouts) {
 					),
 				'list-callouts: body',
 			);
+			/* The Plugins page owns this bundle's configuration page: it renders the
+			   entry on the bundle's own page, the same place the shipped bundles keep
+			   their settings. */
 			ctx.effect(
 				() =>
-					ctx.slots.inject('settings.plugins.tab', () =>
+					ctx.slots.inject('plugins.bundle.config', () =>
 						ctx.slots.register(
-							{ name: 'settings.plugins.tab', id: 'list-callouts', order: 20, label: () => t('settings.tab'), locale: NS },
+							{ name: 'plugins.bundle.config', key: PLUGIN_ID, locale: NS },
 							ListCalloutSettingsPage,
 						),
 					),
-				'list-callouts: settings tab',
+				'list-callouts: bundle config page',
 			);
+			/* Bind the Host-side config form for this row when the profile composes the
+			   settings service; without it the injected defaults stay in force. */
 			ctx.effect(
 				() =>
-					ctx.slots.inject('settings.section', () =>
-						ctx.slots.register(
-							{
-								name: 'settings.section',
-								id: 'list-callouts',
-								order: 25,
-								label: () => t('settings.tab'),
-								locale: NS,
-								inject: () => ({ heading: true }),
-							},
-							ListCalloutSettingsPage,
-						),
-					),
-				'list-callouts: settings section',
+					ctx.inject(['configForms'], (binding) => binding.effect(() => bindConfigForm(binding), 'list-callouts: settings form')),
+				'list-callouts: settings binding',
 			);
 			if (CONFIG.chatCallouts) {
 				ctx.effect(
