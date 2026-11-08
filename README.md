@@ -94,6 +94,24 @@ back to the stock renderer.
 Set `defaultViewer: builtin` (see below) to keep the stock renderer in front and
 make "List callouts" an opt-in choice in that dropdown instead.
 
+## Settings
+
+**Settings → Plugins → List callouts** edits the marker list without touching
+any config file:
+
+- add and remove markers, each with a character (≤ 4 code units, no spaces), a
+  color picker, and an optional icon glyph;
+- a live preview renders the current list with the real callout styling;
+- every accepted edit applies immediately to both surfaces — open documents
+  re-render and already-rendered Chat rows are re-decorated;
+- **Reset to defaults** clears the override and falls back to the plugin config.
+
+The page writes to this browser's `localStorage`
+(`dsh.list-callouts.callouts.v1`), because the DSH settings document only serves
+plugins that own a Host `Config` schema; the loader row config still supplies the
+defaults the page falls back to. Effective order: browser override → row config →
+built-in defaults.
+
 ## Configuration
 
 Add a matching row override in the profile's `cordis.patch.yml`:

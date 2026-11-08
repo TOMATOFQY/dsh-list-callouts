@@ -396,9 +396,79 @@ function matchListCallout(element, callouts) {
 			};
 		})();
 
+		/** Browser-local override written by the settings page. */
+		const STORE_KEY = 'dsh.list-callouts.callouts.v1';
+		const DEFAULT_COLOR = '255, 145, 0';
+		/** Marker characters offered by "add" before the list is exhausted. */
+		const MARKER_CANDIDATES = ['!', '?', '~', '@', '$', '%', '&', '#', '^', '*', '+', '-', '='];
+
+		/** Read the browser-local override, when it parses. */
+		function readStoredCallouts() {
+			try {
+				const raw = localStorage.getItem(STORE_KEY);
+				if (raw === null) return undefined;
+				const parsed = JSON.parse(raw);
+				if (parsed === null || typeof parsed !== 'object' || !Array.isArray(parsed.callouts)) return undefined;
+				return parsed.callouts;
+			} catch {
+				return undefined;
+			}
+		}
+
+		/** Persist the override; clearing it restores the loader row config. */
+		function writeStoredCallouts(callouts) {
+			try {
+				if (callouts === undefined) localStorage.removeItem(STORE_KEY);
+				else localStorage.setItem(STORE_KEY, JSON.stringify({ callouts }));
+			} catch {
+				/* storage can be unavailable; the session keeps working from memory */
+			}
+		}
+
 		/** Longest marker first, so a multi-character marker wins over its prefix. */
-		const SORTED_CALLOUTS = CONFIG.callouts.slice().sort((left, right) => right.char.length - left.char.length);
-		const RENDERER = createRenderer(markdownit, CONFIG.callouts);
+		function sortCallouts(callouts) {
+			return callouts.slice().sort((left, right) => right.char.length - left.char.length);
+		}
+
+		/** Callout list in force: browser override > loader row config > built-in defaults. */
+		const settings = (() => {
+			const stored = readStoredCallouts();
+			const callouts = stored === undefined ? CONFIG.callouts : normalizeCallouts(stored);
+			return { callouts, sorted: sortCallouts(callouts) };
+		})();
+		let renderer = createRenderer(markdownit, settings.callouts);
+		const settingsListeners = new Set();
+
+		/** Observe callout-list changes made from the settings page. */
+		function subscribeCallouts(listener) {
+			settingsListeners.add(listener);
+			return () => settingsListeners.delete(listener);
+		}
+
+		/** Replace the live callout list, rebuild the renderer, and notify every surface. */
+		function setCallouts(callouts) {
+			settings.callouts = callouts;
+			settings.sorted = sortCallouts(callouts);
+			renderer = createRenderer(markdownit, callouts);
+			for (const listener of Array.from(settingsListeners)) listener();
+		}
+
+		/** The callout list currently in force. */
+		function currentCallouts() {
+			return settings.callouts;
+		}
+
+		/** Longest-first marker list used to match rendered list items. */
+		function currentSortedCallouts() {
+			return settings.sorted;
+		}
+
+		/** Re-render a component whenever the callout list changes. */
+		function useCalloutVersion() {
+			const [version, setVersion] = React.useState(0);
+			React.useEffect(() => subscribeCallouts(() => setVersion((value) => value + 1)), []);
+			return version;
+		}
 		const ROOT_STYLE = {
 			'--lc-bg-opacity-light': String(CONFIG.opacity.light),
 			'--lc-bg-opacity-dark': String(CONFIG.opacity.dark),
@@ -460,6 +530,24 @@ function matchListCallout(element, callouts) {
 			`body[data-ds-dark-theme] li.${CHAT_CLASS}::before{background-color:rgba(var(--lc-callout-color),var(--lc-bg-opacity-dark,.15))}`,
 			`li.${CHAT_CLASS}::marker{color:rgb(var(--lc-callout-color))}`,
 			`li.${CHAT_CLASS} .lc-chat-marker{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-weight:700;line-height:1;color:rgb(var(--lc-callout-color));pointer-events:none}`,
+			/* Settings → Plugins → List callouts. Host tokens only. */
+			'.lc-settings{display:flex;flex-direction:column;gap:10px;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.6}',
+			'.lc-settings-intro{margin:0;color:var(--dsw-alias-label-secondary)}',
+			'.lc-settings-list{display:flex;flex-direction:column;gap:6px}',
+			'.lc-settings-row{display:flex;align-items:center;gap:8px}',
+			'.lc-settings-char,.lc-settings-icon{background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l2);border-radius:6px;color:inherit;font:inherit;padding:4px 8px;min-width:0}',
+			'.lc-settings-char{width:3.2em;text-align:center;font-family:var(--ds-font-family-code,ui-monospace,monospace);font-weight:700}',
+			'.lc-settings-icon{width:5em}',
+			'.lc-settings-color{width:2.4em;height:26px;flex:none;padding:0;border:.5px solid var(--dsw-alias-border-l2);border-radius:6px;background:transparent;cursor:pointer}',
+			'.lc-settings-actions{display:flex;gap:8px;margin-top:2px}',
+			'.lc-settings-button{background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l2);border-radius:6px;color:inherit;font:inherit;padding:4px 12px;cursor:pointer}',
+			'.lc-settings-button:hover{background:var(--dsw-alias-bg-layer-1)}',
+			'.lc-settings-remove{background:none;border:none;border-radius:6px;color:var(--dsw-alias-label-secondary);font:inherit;padding:2px 8px;cursor:pointer}',
+			'.lc-settings-remove:hover{color:var(--dsw-alias-state-error-primary)}',
+			'.lc-settings-hint{margin:0;color:var(--dsw-alias-state-error-primary)}',
+			'.lc-settings-preview-label,.lc-settings-note{margin:4px 0 0;color:var(--dsw-alias-label-secondary)}',
+			'.lc-settings-preview{margin:0;padding:0 0 0 34px;list-style:disc outside}',
+			'.lc-settings-preview li{margin:0 0 4px}',
 		].join('\n');
 
 		/** Snapshot the document's Host-absolute path for relative image resolution. */
@@ -501,6 +589,7 @@ function matchListCallout(element, callouts) {
 		 * whole parsed tree, so a plain HTML container is the presentation.
 		 */
 		function ListCalloutDocument(props) {
+			const version = useCalloutVersion();
 			const useResource = typeof props.useResource === 'function' ? props.useResource : useNoResource;
 			const resource = useResource(props.resourceAddress);
 			const absolutePath = resource !== null && resource !== undefined && resource.value ? resource.value.absolutePath : undefined;
@@ -511,7 +600,7 @@ function matchListCallout(element, callouts) {
 				() => ({ resolveImage: imageResolver(document.baseURI, documentPathOf(absolutePath, props.resourceAddress)) }),
 				[absolutePath, props.resourceAddress],
 			);
-			const rendered = React.useMemo(() => (isText ? renderDocument(RENDERER, text, env) : null), [isText, text, env]);
+			const rendered = React.useMemo(() => (isText ? renderDocument(renderer, text, env) : null), [isText, text, env, version]);
 			if (rendered === null) return null;
 			return React.createElement(
 				'div',
@@ -572,7 +661,7 @@ function matchListCallout(element, callouts) {
 					return;
 				}
 				if (markers.has(row)) return;
-				const callout = matchListCallout(row, SORTED_CALLOUTS);
+				const callout = matchListCallout(row, currentSortedCallouts());
 				if (callout === undefined) return;
 				const text = firstMarkableText(row);
 				if (text === null) return;
@@ -609,7 +698,7 @@ function matchListCallout(element, callouts) {
 				if (!decorated.has(row)) {
 					if (row.closest('[data-lc-document]') !== null) return;
 					if (row.closest(CHAT_SCOPE) === null) return;
-					const callout = matchListCallout(row, SORTED_CALLOUTS);
+					const callout = matchListCallout(row, currentSortedCallouts());
 					if (callout === undefined) return;
 					row.classList.add(CHAT_CLASS);
 					row.setAttribute('data-lc-callout', callout.char);
@@ -703,21 +792,10 @@ function matchListCallout(element, callouts) {
 				}
 			});
 
-			rootObserver.observe(document.body, { childList: true, subtree: true });
-			for (const container of document.querySelectorAll(CHAT_SCOPE)) attach(container);
-
-			return () => {
-				if (frame !== 0) {
-					if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
-					else clearTimeout(frame);
-					frame = 0;
-				}
-				rootObserver.disconnect();
-				for (const observer of contentObservers.values()) observer.disconnect();
-				contentObservers.clear();
+			/** Strip every decoration this installer added, keeping the observers alive. */
+			const clearDecorations = () => {
 				for (const timer of timers.values()) clearTimeout(timer);
 				timers.clear();
-				pending.clear();
 				for (const row of Array.from(markers.keys())) revertMarker(row);
 				for (const row of decorated) {
 					row.classList.remove(CHAT_CLASS);
@@ -728,6 +806,34 @@ function matchListCallout(element, callouts) {
 				}
 				decorated.clear();
 			};
+
+			/** Re-decorate the whole rendered conversation after the callout list changed. */
+			const rescan = () => {
+				clearDecorations();
+				for (const container of contentObservers.keys()) {
+					for (const row of container.querySelectorAll('li')) pending.add(row);
+				}
+				for (const container of document.querySelectorAll(CHAT_SCOPE)) attach(container);
+				schedule();
+			};
+
+			rootObserver.observe(document.body, { childList: true, subtree: true });
+			for (const container of document.querySelectorAll(CHAT_SCOPE)) attach(container);
+			const offSettings = subscribeCallouts(rescan);
+
+			return () => {
+				if (frame !== 0) {
+					if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
+					else clearTimeout(frame);
+					frame = 0;
+				}
+				rootObserver.disconnect();
+				for (const observer of contentObservers.values()) observer.disconnect();
+				contentObservers.clear();
+				offSettings();
+				pending.clear();
+				clearDecorations();
+			};
 		}
 
 		/** Resident, zero-size mount that keeps the Chat decoration observer alive with the plugin. */
@@ -736,11 +842,219 @@ function matchListCallout(element, callouts) {
 			return null;
 		}
 
+		//#region settings page
+		/** Normalize "r, g, b" (or "r g b") into the stylesheet spelling, else undefined. */
+		function parseRgb(value) {
+			const text = typeof value === 'string' ? value.trim() : '';
+			const parts = text.split(/[ ,]+/u).filter((part) => part !== '');
+			if (parts.length !== 3) return undefined;
+			const channels = [];
+			for (const part of parts) {
+				if (!/^\d{1,3}$/u.test(part)) return undefined;
+				const channel = Number.parseInt(part, 10);
+				if (channel > 255) return undefined;
+				channels.push(channel);
+			}
+			return channels.join(', ');
+		}
+
+		/** "#rrggbb" for a color input, best effort. */
+		function rgbToHex(color) {
+			const parsed = parseRgb(color);
+			if (parsed === undefined) return '#000000';
+			const channels = parsed.split(', ').map((part) => Number.parseInt(part, 10));
+			return `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+		}
+
+		/** "r, g, b" for a color input value, else undefined. */
+		function hexToRgb(hex) {
+			const match = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/iu.exec(typeof hex === 'string' ? hex : '');
+			if (match === null) return undefined;
+			return `${Number.parseInt(match[1], 16)}, ${Number.parseInt(match[2], 16)}, ${Number.parseInt(match[3], 16)}`;
+		}
+
+		/**
+		 * Validate the editor's rows into a callout list.
+		 * @param {{ char: string, color: string, icon?: string }[]} rows - draft rows.
+		 * @returns {{ callouts: object[] } | { error: string }} the accepted list or the failing field.
+		 */
+		function validateRows(rows) {
+			const seen = new Set();
+			const callouts = [];
+			for (const row of rows) {
+				const char = typeof row.char === 'string' ? row.char.trim() : '';
+				const icon = typeof row.icon === 'string' ? row.icon.trim() : '';
+				const color = parseRgb(row.color);
+				if (char === '' || /\s/u.test(char) || char.length > 4) return { error: 'char' };
+				if (seen.has(char)) return { error: 'duplicate' };
+				if (color === undefined) return { error: 'color' };
+				seen.add(char);
+				callouts.push(icon === '' ? { char, color } : { char, color, icon: icon.slice(0, 4) });
+			}
+			if (callouts.length === 0) return { error: 'empty' };
+			return { callouts };
+		}
+
+		/**
+		 * Plugins → "List callouts" tab: edit the marker characters, their colors and
+		 * optional icon glyphs. Every accepted edit applies to both surfaces at once.
+		 * @param {{ t: (key: string) => string }} props - locale copy.
+		 * @returns the editor and its live preview.
+		 */
+		function ListCalloutSettingsPage(props) {
+			const t = props.t;
+			useCalloutVersion();
+			const [rows, setRows] = React.useState(() => currentCallouts().map((entry) => ({ ...entry })));
+			const [failure, setFailure] = React.useState(undefined);
+
+			const applyRows = (next) => {
+				setRows(next);
+				const checked = validateRows(next);
+				if (checked.error !== undefined) {
+					setFailure(checked.error);
+					return;
+				}
+				setFailure(undefined);
+				setCallouts(checked.callouts);
+				writeStoredCallouts(checked.callouts);
+			};
+			const changeRow = (index, patch) => {
+				applyRows(rows.map((row, position) => (position === index ? { ...row, ...patch } : row)));
+			};
+			const addRow = () => {
+				const used = new Set(rows.map((row) => (typeof row.char === 'string' ? row.char.trim() : '')));
+				const char = MARKER_CANDIDATES.find((candidate) => !used.has(candidate)) ?? '!';
+				applyRows([...rows, { char, color: DEFAULT_COLOR }]);
+			};
+			const removeRow = (index) => {
+				if (rows.length <= 1) return;
+				applyRows(rows.filter((_, position) => position !== index));
+			};
+			const reset = () => {
+				writeStoredCallouts(undefined);
+				setRows(CONFIG.callouts.map((entry) => ({ ...entry })));
+				setCallouts(CONFIG.callouts);
+				setFailure(undefined);
+			};
+
+			const previewRows = rows.map((row, index) => {
+				const color = parseRgb(row.color) ?? '0, 0, 0';
+				return React.createElement(
+					'li',
+					{
+						key: `preview-${index}`,
+						className: CHAT_CLASS,
+						'data-lc-callout': row.char,
+						style: {
+							'--lc-callout-color': color,
+							'--lc-bg-opacity-light': String(CONFIG.opacity.light),
+							'--lc-bg-opacity-dark': String(CONFIG.opacity.dark),
+						},
+					},
+					React.createElement('span', { className: 'lc-chat-marker' }, row.icon !== undefined && row.icon !== '' ? row.icon : row.char),
+					` ${t('settings.sample')}`,
+				);
+			});
+
+			return React.createElement(
+				'div',
+				{ className: 'lc-settings' },
+				React.createElement('p', { className: 'lc-settings-intro' }, t('settings.intro')),
+				React.createElement(
+					'div',
+					{ className: 'lc-settings-list' },
+					rows.map((row, index) =>
+						React.createElement(
+							'div',
+							{ className: 'lc-settings-row', key: `row-${index}` },
+							React.createElement('input', {
+								className: 'lc-settings-char',
+								value: row.char ?? '',
+								maxLength: 4,
+								'aria-label': t('settings.char'),
+								onChange: (event) => changeRow(index, { char: event.target.value }),
+							}),
+							React.createElement('input', {
+								className: 'lc-settings-color',
+								type: 'color',
+								value: rgbToHex(row.color),
+								'aria-label': t('settings.color'),
+								onChange: (event) => {
+									const parsed = hexToRgb(event.target.value);
+									if (parsed !== undefined) changeRow(index, { color: parsed });
+								},
+							}),
+							React.createElement('input', {
+								className: 'lc-settings-icon',
+								value: row.icon ?? '',
+								maxLength: 4,
+								placeholder: t('settings.icon'),
+								'aria-label': t('settings.icon'),
+								onChange: (event) => changeRow(index, { icon: event.target.value }),
+							}),
+							React.createElement(
+								'button',
+								{
+									className: 'lc-settings-remove',
+									type: 'button',
+									title: t('settings.delete'),
+									'aria-label': t('settings.delete'),
+									onClick: () => removeRow(index),
+								},
+								'✕',
+							),
+						),
+					),
+				),
+				React.createElement(
+					'div',
+					{ className: 'lc-settings-actions' },
+					React.createElement('button', { className: 'lc-settings-button', type: 'button', onClick: addRow }, t('settings.add')),
+					React.createElement('button', { className: 'lc-settings-button', type: 'button', onClick: reset }, t('settings.reset')),
+				),
+				failure === undefined ? null : React.createElement('p', { className: 'lc-settings-hint' }, t(`settings.error.${failure}`)),
+				React.createElement('p', { className: 'lc-settings-preview-label' }, t('settings.preview')),
+				React.createElement('ul', { className: 'lc-settings-preview' }, previewRows),
+				React.createElement('p', { className: 'lc-settings-note' }, t('settings.note')),
+			);
+		}
+		//#endregion
+
 		const ZH = {
 			'viewer.label': '列表 Callout',
+			'settings.tab': '列表 Callout',
+			'settings.intro': '在这里增删批注（list callout）的标记字符、颜色与可选图标；改动立即作用到文档预览和聊天消息。',
+			'settings.char': '标记字符',
+			'settings.color': '颜色',
+			'settings.icon': '图标（可选）',
+			'settings.add': '添加一条',
+			'settings.reset': '恢复默认',
+			'settings.delete': '删除',
+			'settings.preview': '预览',
+			'settings.sample': '示例文本',
+			'settings.note': '这些设置保存在本机浏览器（localStorage），不写入 DSH 的 settings 文档；恢复默认后会回落到插件配置（cordis.patch.yml）里的值。',
+			'settings.error.char': '标记字符不能为空、不能含空格，最多 4 个字符。',
+			'settings.error.duplicate': '标记字符重复了。',
+			'settings.error.color': '颜色格式应为 r, g, b（0–255）。',
+			'settings.error.empty': '至少保留一条批注定义。',
 		};
 		const EN = {
 			'viewer.label': 'List callouts',
+			'settings.tab': 'List callouts',
+			'settings.intro': 'Add, edit, or remove the marker characters, colors, and optional icon glyphs used for list callouts. Changes apply to document previews and Chat immediately.',
+			'settings.char': 'Marker',
+			'settings.color': 'Color',
+			'settings.icon': 'Icon (optional)',
+			'settings.add': 'Add one',
+			'settings.reset': 'Reset to defaults',
+			'settings.delete': 'Remove',
+			'settings.preview': 'Preview',
+			'settings.sample': 'Sample text',
+			'settings.note': 'Stored in this browser (localStorage), not in the DSH settings document. Resetting falls back to the plugin config in cordis.patch.yml.',
+			'settings.error.char': 'A marker cannot be empty, contain spaces, or exceed 4 characters.',
+			'settings.error.duplicate': 'Two rows use the same marker character.',
+			'settings.error.color': 'Color must be r, g, b (0-255).',
+			'settings.error.empty': 'Keep at least one callout definition.',
 		};
 
 		/** Register the renderer, its body, its dictionaries, its decorator, and its stylesheet. */
@@ -766,11 +1080,21 @@ function matchListCallout(element, callouts) {
 					),
 				'list-callouts: body',
 			);
+			ctx.effect(
+				() =>
+					ctx.slots.inject('settings.plugins.tab', () =>
+						ctx.slots.register(
+							{ name: 'settings.plugins.tab', id: 'list-callouts', order: 20, label: () => t('settings.tab'), locale: NS },
+							ListCalloutSettingsPage,
+						),
+					),
+				'list-callouts: settings tab',
+			);
 			if (CONFIG.chatCallouts) {
 				ctx.effect(
 					() =>
 						ctx.slots.inject('shell.overlay', () =>
-							ctx.slots.register({ name: 'shell.overlay', id: `${PLUGIN_ID}/chat-callouts`, order: 906 }, ChatCalloutDecorator),
+							ctx.slots.register({ name: 'shell.overlay', id: `${PLUGIN_ID}/chat-callouts`, order: 907 }, ChatCalloutDecorator),
 						),
 					'list-callouts: chat decorator',
 				);
