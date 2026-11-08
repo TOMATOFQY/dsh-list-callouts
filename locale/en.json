@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "List callouts",
+    "description": "Renders - ! list callouts in Markdown file previews and in Chat messages, with configurable marker characters and colors."
+  }
+}

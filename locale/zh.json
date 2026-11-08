@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "列表 Callout",
+    "description": "在 Markdown 文件预览和聊天消息中渲染 - ! 列表 callout，支持自定义标记字符与颜色。"
+  }
+}

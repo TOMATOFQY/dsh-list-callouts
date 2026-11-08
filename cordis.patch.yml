@@ -1,0 +1,3 @@
+- insert:
+    - id: obsidian-list-callouts
+      name: '@local/obsidian-list-callouts'

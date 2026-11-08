@@ -1,0 +1,139 @@
+# List callouts
+
+Renders **list callouts** in DSH's Markdown file preview *and* in Chat messages: a
+list item whose first character is a configured marker becomes a tinted,
+color-coded callout.
+
+This is a port of [mgmeyers/obsidian-list-callouts](https://github.com/mgmeyers/obsidian-list-callouts)
+(GPL-3.0) to the DSH Web UI. The Obsidian plugin's reading-view half — the
+`registerMarkdownPostProcessor` pass and `styles.css` — is reimplemented as a
+markdown-it transform plus scoped CSS; the CodeMirror live-preview half has no
+counterpart because DSH's file preview is read-only.
+
+## Install
+
+The package is a self-contained DSH bundle: a Host half (`index.js`), a Browser
+half (`client.js`, which embeds the markdown-it bundle), the loader patch, locale
+metadata, and an icon. Install the directory into a profile:
+
+```sh
+# inside a DSH session / profile shell
+plugin_manager install_bundle /path/to/dsh-list-callouts
+```
+
+`client.js` is the shipped artifact. Editing it directly is enough — there is no
+build step; the renderer code lives in its `//#region` sections.
+
+## Layout
+
+| Path | Role |
+|---|---|
+| `index.js` | Host half: projects the row config onto `__DSH_LIST_CALLOUTS_CONFIG__` |
+| `client.js` | Browser half: document-preview renderer, Chat decorator, CSS |
+| `cordis.patch.yml` | Inserts the loader row for the bundle |
+| `locale/{en,zh}.json` | Plugin Manager title/description |
+| `icon.svg` | Plugin artwork |
+
+## Syntax
+
+```markdown
+- ! important
+- ? question
+- ~ idea
+- @ note
+- $ success
+- % neutral
+- & warning
+```
+
+Any list item works: ordered lists, nested lists, blockquotes, and task items.
+The same syntax is decorated in Chat answers, reasoning text, and any other
+Markdown rendered inside the conversation.
+
+```markdown
+- [ ] ! a task that is also a callout
+- ! parent callout
+  - nested items stay outside the tinted block
+```
+
+## Two rendering paths
+
+| Surface | Mechanism | Fidelity |
+|---|---|---|
+| Sidebar file preview | The plugin registers its **own** Markdown document renderer, so it owns the whole tree | Full: tinted wrapper, nested lists stay outside the tint, marker glyph can be an icon |
+| Chat | A resident decorator watches rendered conversation Markdown: class/attribute/custom-property writes are immediate, and the marker character is split into a styled span only after the text has been stable for 350ms | Tint covers the whole item (nested items included); the bubble's own `li` is never moved or replaced, so streaming and virtualization stay valid |
+
+Both surfaces keep the list's own bullet marker — the shipped `li::marker` rule in
+Chat, the default disc in the preview — and the tinted band extends left so the
+bullet sits inside it, as in the Obsidian plugin. Task items show their checkbox
+instead of a bullet.
+
+On both surfaces the list bullet takes the callout's own color (`li::marker`),
+so a callout row reads as `• ! text` with the dot, glyph, and tint in one color.
+
+In Chat, the marker character cannot be colored in place (a `::first-letter`
+rule does not apply to these list items), so the decorator splits it into a
+`<span class="lc-chat-marker">` only after the row's text has been stable for
+350ms. The original text node stays in place — never moved, never parented
+elsewhere — so React's own text updates and unmounts remain valid; if React
+rewrites the text, the split is reverted and re-applied on the next settle.
+
+The Chat path deliberately never re-parents or replaces nodes: that DOM belongs
+to the shipped renderer, which also streams tokens and unmounts virtualized
+rows, so structural edits would break its reconciliation. Disable it with
+`chatCallouts: false` if you prefer Chat untouched.
+
+## How it plugs in
+
+The plugin registers **its own Markdown document renderer** through
+`ctx.documentPreviews` at the `extension` priority band, so `.md` / `.markdown`
+files open with list-callout support. The shipped renderer is still registered:
+the preview's viewer dropdown lists both, so any single file can be switched
+back to the stock renderer.
+
+Set `defaultViewer: builtin` (see below) to keep the stock renderer in front and
+make "List callouts" an opt-in choice in that dropdown instead.
+
+## Configuration
+
+Add a matching row override in the profile's `cordis.patch.yml`:
+
+```yaml
+- id: obsidian-list-callouts
+  config:
+    defaultViewer: callouts      # callouts | builtin (sidebar .md preview)
+    chatCallouts: true           # decorate Chat messages too
+    opacity:
+      light: 0.1
+      dark: 0.15
+    callouts:
+      - { char: '!', color: '255, 23, 68' }
+      - { char: '?', color: '255, 145, 0' }
+      - { char: '★', color: '255, 214, 0', icon: '★' }
+```
+
+- `callouts[].char` — the marker character (≤ 4 code units, no spaces).
+- `callouts[].color` — `r, g, b` (0–255) used for the marker and the tinted background.
+- `callouts[].icon` — optional glyph shown instead of `char` (emoji work).
+- `opacity.light` / `opacity.dark` — background tint alpha, 0–1.
+- `defaultViewer` — which renderer opens `.md` tabs first; the other one stays
+  available in the preview toolbar's dropdown.
+- `chatCallouts` — set `false` to leave Chat rendering completely untouched.
+
+## Renderer coverage
+
+Supported: headings, paragraphs, emphasis, nested ordered/unordered lists, task
+lists, tables, blockquotes, fenced code, inline code, links, images (local files
+resolve through the authenticated file route; remote URLs are left alone), `---`
+rules, and a leading YAML frontmatter block shown as a key/value box.
+
+Not covered (the stock renderer still offers these): syntax highlighting,
+KaTeX math, footnotes, and source-file line anchors. Markdown link and image
+focus affordances are the plugin's own, not the stock component's.
+
+## License
+
+GPL-3.0, inherited from the upstream plugin this is a port of (see `LICENSE`).
+
+Vendored third-party code: [markdown-it](https://github.com/markdown-it/markdown-it)
+14.1.0, MIT, embedded in `client.js`.
