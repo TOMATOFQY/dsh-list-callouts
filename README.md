@@ -14,17 +14,12 @@ counterpart because DSH's file preview is read-only.
 
 ## Screenshots
 
-Captured from a running DSH session (Chinese UI). The list's own bullet is kept and
-takes the callout color, the marker character follows it, and a nested list stays
-inside the band in Chat:
-
-![Chat callouts](screenshots/chat-callouts.png)
-
-![Callout color variety](screenshots/chat-callouts-variety.png)
-
-Illustrations with placeholder text — Chat, the configuration page of the bundle
+Demo scenes with placeholder text: Chat, the configuration page of the bundle
 (Sidebar → Plugins), and the sidebar document preview. They are constructed from the
-plugin's own stylesheet rather than captured from a session:
+plugin's own stylesheet rather than captured from a session.
+
+In Chat the list keeps its own bullet, the bullet and the marker take the callout
+color, and a nested list stays inside the band:
 
 ![Demo Chat](screenshots/demo-chat.png)
 
